@@ -1,0 +1,12 @@
+# Proje notları (repoya dahil değil)
+belgeler/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.spyproject/
+.idea/
+.vscode/
