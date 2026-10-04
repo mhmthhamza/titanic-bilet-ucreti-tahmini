@@ -4,7 +4,7 @@
 Mehmet Hamza Şükür
 
 Titanic yolcu verisinde bilet ücretini (Fare) tahmin eden regresyon modelleri:
-basit/çoklu OLS, varsayım kontrolleri, VIF ve eğitim-test ayrımı.
+basit/çoklu OLS, varsayım kontrolleri, VIF, eğitim-test ayrımı, PCR ve PLS.
 
 Kullanım: Spyder'da hücre hücre (Shift+Enter) ya da `python titanic_analiz.py`
 Girdi   : veri/Titanic-Dataset.csv
@@ -22,8 +22,12 @@ import scipy.stats as stats
 import seaborn as sb
 import statsmodels.api as sm
 from scipy.stats import shapiro
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import KFold, cross_val_score, train_test_split
+from sklearn.preprocessing import StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 
@@ -220,3 +224,119 @@ print(f"OLS test  MSE: {mse_test:.2f}   RMSE: {np.sqrt(mse_test):.2f}   R^2: {r2
 # Hata miktarının test setinde neredeyse iki katına çıkması, tahminlerinin test verisinde çok daha
 # fazla saptığını gösteriyor. Genelde bu iki değerin birbirine yakın olması beklenir.
 # Sonuçlar pek de parlak görünmüyor.
+
+
+# %% 2.3 PCR (PRINCIPAL COMPONENT REGRESSION)
+# İlk önce cross validation yapısını kuralım
+cv = KFold(n_splits=5, shuffle=True, random_state=SEED_CV)
+# Modelimizin x ve y'sini tekrar yazalım ve eğitim test parçalanmasını yapalım
+x = data.drop("Fare", axis=1)
+y = data["Fare"]
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=SEED_BOLME)
+# Şimdi veriyi scale edelim (boyut indirgemesi için)
+sc = StandardScaler()
+x_train_std = sc.fit_transform(x_train)
+x_test_std = sc.transform(x_test)
+
+# PCA'yı hazırlayalım ve Optimal Bileşen belirleyelim
+pca = PCA()
+x_train_pca = pca.fit_transform(x_train_std)
+regr = LinearRegression()
+bilesen_sayilari = np.arange(1, x_train_std.shape[1] + 1)
+mse = []
+for i in bilesen_sayilari:
+    score = -1 * cross_val_score(regr, x_train_pca[:, :i], y_train,
+                                 cv=cv, scoring="neg_mean_squared_error").mean()
+    mse.append(score)
+# Hangi bileşen en iyi mse değerini vermiş diye grafik ile bakalım.
+mt.figure()
+mt.plot(bilesen_sayilari, mse, marker="o")
+mt.xlabel("Component Sayısı")
+mt.ylabel("MSE")
+mt.title("Bileşen Sayısına Göre Hata Değişimi (CV ile)")
+grafik_kaydet("05_pcr_bilesen_secimi")
+# En iyi bileşen sayısı, CV hatasının en küçük olduğu nokta olarak otomatik seçilir.
+best_n = int(bilesen_sayilari[np.argmin(mse)])
+print("PCR CV MSE:", [round(float(m), 1) for m in mse])
+print("PCR için seçilen bileşen sayısı:", best_n, f"(toplam değişken sayısı: {x_train_std.shape[1]})")
+
+# Şimdi Modelimizi tekrar kuralım.
+pca_final = PCA(n_components=best_n)
+x_train_final = pca_final.fit_transform(x_train_std)
+x_test_final = pca_final.transform(x_test_std)
+pcreg = LinearRegression().fit(x_train_final, y_train)
+# Tahminleri alalım
+y_test_pred = pcreg.predict(x_test_final)
+# Performans Ölçümü
+pcr_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+pcr_r2 = r2_score(y_test, y_test_pred)
+pcr_mae = mean_absolute_error(y_test, y_test_pred)
+print(f"PCR Model RMSE: {pcr_rmse:.4f}")
+print(f"PCR Model R^2 Skoru: {pcr_r2:.4f}")
+print(f"PCR Model MAE: {pcr_mae:.4f}")
+
+# Modelin ortalama hatası (MAE) 25.42 birimdir. Ancak RMSE değerinin 58.44 gibi çok daha
+# yüksek bir seviyede olması, veri setindeki aykırı değerlerin (uç fiyatlı biletlerin) model
+# tahminlerini ciddi şekilde saptırdığını gösteriyor. %18'lik düşük R-kare skoru ile
+# birleştiğinde; PCR modelinin bilet fiyatlarındaki genel eğilimi yakaladığı, fakat yüksek
+# fiyatlı biletlerin yarattığı varyansı açıklamakta yetersiz kaldığını görüyoruz.
+# ÖNEMLİ: Çapraz doğrulama tüm bileşenleri (6/6) seçtiği için bu PCR modeli boyut indirgemesi
+# yapmıyor; sonuçları düz OLS'nin test sonuçlarıyla birebir aynıdır (R^2 = 0.1798).
+
+
+# %% 2.4 PLSR (PARTIAL LEAST SQUARES REGRESSION)
+# Öncelikle modelimizin x ve y eğitim test parçalanması yukarıdaki ile aynıdır.
+cv = KFold(n_splits=5, shuffle=True, random_state=SEED_CV)
+
+# Optimal Bileşen Sayısını Belirleme
+pls_bilesenler = np.arange(1, x_train.shape[1] + 1)
+pls_mse = []
+for i in pls_bilesenler:
+    pls = PLSRegression(n_components=i)
+    score = -1 * cross_val_score(pls, x_train, y_train,
+                                 cv=cv, scoring="neg_mean_squared_error").mean()
+    pls_mse.append(score)
+# Grafik ile de kontrol edelim.
+mt.figure()
+mt.plot(pls_bilesenler, pls_mse, marker="o")
+mt.xlabel("Bileşen Sayısı (PLS)")
+mt.ylabel("MSE")
+mt.title("PLS: Bileşen Sayısına Göre Hata Değişimi (CV ile)")
+grafik_kaydet("06_pls_bilesen_secimi")
+
+print("PLS CV MSE:", [round(float(m), 1) for m in pls_mse])
+# Grafiğe baktığımızda en uygun bileşen sayısının 2 olduğunu görüyoruz. Bu değerle model kuralım.
+best_pls = 2
+pls_model = PLSRegression(n_components=best_pls).fit(x_train, y_train)
+y_test_pred = pls_model.predict(x_test)
+# Metrikler
+pls_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+pls_r2 = r2_score(y_test, y_test_pred)
+pls_mae = mean_absolute_error(y_test, y_test_pred)
+print("--- PLS Final Model Sonuçları ---")
+print(f"PLS RMSE: {pls_rmse:.4f}")
+print(f"PLS R^2 : {pls_r2:.4f}")
+print(f"PLS MAE : {pls_mae:.4f}")
+
+# Genel beklentinin aksine, bu veri seti üzerinde PCR modelinin PLS modelinden hafifçe daha iyi
+# performans gösterdiğini gözlemledik. Bu durum, bağımsız değişkenlerin hedef değişken üzerindeki
+# etkisinin düşük olması veya aykırı değerlerin PLS bileşenlerini gürültülü hale getirmesinden
+# kaynaklanıyor olabilir. Bu iki model de (PCR ve PLS) bilet fiyatındaki değişkenliğin ancak
+# %17-%18'ini açıklayabildi. RMSE hala çok yüksek (58 birim).
+# Not: PCR'da CV tüm bileşenleri (6/6) seçtiği için PCR sonucu düz OLS ile aynıdır. PLS'te CV
+# hatası 2 bileşenden sonra neredeyse düz kaldığı için (1426 -> 1413) en sade model olan 2
+# bileşen tercih edildi.
+
+
+# %% 3. TEST SETİ SONUÇ ÖZETİ
+ozet = pd.DataFrame(
+    {
+        "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse],
+        "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae],
+        "R2": [r2_test, pcr_r2, pls_r2],
+    },
+    index=["OLS", f"PCR ({best_n} bileşen)", f"PLS ({best_pls} bileşen)"],
+).round(4)
+print("\nTest seti karşılaştırması:\n", ozet)
+
+# Devamı (Ridge, Lasso, doğrusal olmayan ve ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
