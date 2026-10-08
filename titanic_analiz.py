@@ -4,7 +4,8 @@
 Mehmet Hamza Şükür
 
 Titanic yolcu verisinde bilet ücretini (Fare) tahmin eden regresyon modelleri:
-basit/çoklu OLS, varsayım kontrolleri, VIF, eğitim-test ayrımı, PCR ve PLS.
+basit/çoklu OLS, varsayım kontrolleri, VIF, eğitim-test ayrımı, PCR, PLS,
+Ridge ve Lasso.
 
 Kullanım: Spyder'da hücre hücre (Shift+Enter) ya da `python titanic_analiz.py`
 Girdi   : veri/Titanic-Dataset.csv
@@ -24,7 +25,7 @@ import statsmodels.api as sm
 from scipy.stats import shapiro
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso, LassoCV, LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold, cross_val_score, train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -328,15 +329,84 @@ print(f"PLS MAE : {pls_mae:.4f}")
 # bileşen tercih edildi.
 
 
+# %% 2.5 RİDGE REGRESYONU
+# \hat(\beta) = (X^T X + \lambda I)^{-1} X^T Y
+# Ridge ve Lasso değişkenlerin ölçeğine duyarlı olduğu için PCR'da hazırladığımız
+# standartlaştırılmış veriyi (x_train_std, x_test_std) kullanalım.
+# Önce lambda (alpha) için bir aday listesi belirleyelim ve her adayı PCR ve PLS'te
+# kurduğumuz aynı yapıyla 5 katlı cross validation ile deneyelim.
+# Hatayı eğitim verisi üzerinde değil, modelin görmediği katlarda ölçüyoruz; çünkü eğitim
+# hatasına bakarsak her zaman en küçük alpha kazanır.
+cv = KFold(n_splits=5, shuffle=True, random_state=SEED_CV)
+alpha_cand = np.array([0.0001, 0.001, 0.01, 0.1, 0.2, 0.5, 1, 5, 10, 20])
+ridge_mse = []
+for a in alpha_cand:
+    skor = -1 * cross_val_score(Ridge(alpha=a), x_train_std, y_train,
+                                cv=cv, scoring="neg_mean_squared_error").mean()
+    ridge_mse.append(skor)
+mt.figure()
+mt.plot(alpha_cand, ridge_mse, marker="o")
+mt.xscale("log")
+mt.xlabel("alpha (lambda)")
+mt.ylabel("CV MSE")
+mt.title("Ridge: Alpha'ya Göre Hata Değişimi (CV ile)")
+grafik_kaydet("07_ridge_alpha")
+
+best_alpha_ridge = float(alpha_cand[np.argmin(ridge_mse)])
+print("Ridge CV MSE:", [round(float(m), 1) for m in ridge_mse])
+print("Ridge için seçilen alpha:", best_alpha_ridge)
+ridge_model = Ridge(alpha=best_alpha_ridge).fit(x_train_std, y_train)
+predicts_ridge = ridge_model.predict(x_test_std)
+ridge_rmse = np.sqrt(mean_squared_error(y_test, predicts_ridge))
+ridge_r2 = r2_score(y_test, predicts_ridge)
+ridge_mae = mean_absolute_error(y_test, predicts_ridge)
+print("--- Ridge Final Model Sonuçları ---")
+print(f"Ridge RMSE: {ridge_rmse:.4f}")
+print(f"Ridge R^2 : {ridge_r2:.4f}")
+print(f"Ridge MAE : {ridge_mae:.4f}")
+# Ridge'in CV hatası denenen tüm alpha değerlerinde neredeyse aynı (1413.5 -> 1412.5); en küçük
+# hata alpha = 10'da. Test setinde RMSE 58.40, R^2 0.1807 ile OLS'ye (58.44 / 0.1798) çok yakın,
+# MAE'de ise biraz daha iyi (25.15 - 25.42). Çoklu bağlantı sorunu olmadığı için (VIF 1-2 civarı)
+# Ridge'in cezalandırması bu veri setinde belirgin bir fark yaratmıyor, beklenen bir sonuç.
+
+
+# %% 2.6 LASSO REGRESYONU
+# alpha optimizasyonunu LassoCV ile (10 katlı cross validation) yapalım.
+lasso_cv = LassoCV(cv=10, random_state=34, max_iter=1000)
+lasso_cv.fit(x_train_std, y_train)
+print("Lasso için seçilen alpha:", lasso_cv.alpha_)
+
+lasso_model = Lasso(alpha=lasso_cv.alpha_).fit(x_train_std, y_train)
+predicts_lasso = lasso_model.predict(x_test_std)
+lasso_rmse = np.sqrt(mean_squared_error(y_test, predicts_lasso))
+lasso_r2 = r2_score(y_test, predicts_lasso)
+lasso_mae = mean_absolute_error(y_test, predicts_lasso)
+print("--- Lasso Final Model Sonuçları ---")
+print(f"Lasso RMSE: {lasso_rmse:.4f}")
+print(f"Lasso R^2 : {lasso_r2:.4f}")
+print(f"Lasso MAE : {lasso_mae:.4f}")
+
+# Lasso hangi değişkenlerin katsayısını sıfırladı?
+lasso_katsayi = pd.Series(lasso_model.coef_, index=x_train.columns)
+print("Lasso katsayıları (standartlaştırılmış veri):\n", lasso_katsayi.round(3))
+print("Sıfırlanan değişkenler:", list(lasso_katsayi[lasso_katsayi == 0].index))
+# Lasso (alpha = 0.148) hiçbir değişkenin katsayısını sıfırlamadı; yani anlamsız çıkan Survived,
+# Age ve Sex_male değişkenlerini de modelde tuttu (katsayıları küçük: 1.2, -1.8, -1.4). Çoklu
+# regresyonda elemeyi düşündüğümüz bu değişkenler için Lasso bir eleme yapmadı, sadece
+# katsayılarını hafifçe küçülttü. Test performansı OLS ve Ridge ile neredeyse aynı (RMSE 58.41,
+# R^2 0.1804). Pclass (-30.0) fiyatı en çok etkileyen değişken olmaya devam ediyor.
+
+
 # %% 3. TEST SETİ SONUÇ ÖZETİ
 ozet = pd.DataFrame(
     {
-        "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse],
-        "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae],
-        "R2": [r2_test, pcr_r2, pls_r2],
+        "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse],
+        "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae, ridge_mae, lasso_mae],
+        "R2": [r2_test, pcr_r2, pls_r2, ridge_r2, lasso_r2],
     },
-    index=["OLS", f"PCR ({best_n} bileşen)", f"PLS ({best_pls} bileşen)"],
+    index=["OLS", f"PCR ({best_n} bileşen)", f"PLS ({best_pls} bileşen)",
+           f"Ridge (alpha={best_alpha_ridge})", f"Lasso (alpha={lasso_cv.alpha_:.4f})"],
 ).round(4)
 print("\nTest seti karşılaştırması:\n", ozet)
 
-# Devamı (Ridge, Lasso, doğrusal olmayan ve ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
+# Devamı (KNN, SVR, yapay sinir ağı ve ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
