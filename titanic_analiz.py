@@ -5,7 +5,7 @@ Mehmet Hamza Şükür
 
 Titanic yolcu verisinde bilet ücretini (Fare) tahmin eden regresyon modelleri:
 basit/çoklu OLS, varsayım kontrolleri, VIF, eğitim-test ayrımı, PCR, PLS,
-Ridge ve Lasso.
+Ridge, Lasso, KNN, SVR ve yapay sinir ağı.
 
 Kullanım: Spyder'da hücre hücre (Shift+Enter) ya da `python titanic_analiz.py`
 Girdi   : veri/Titanic-Dataset.csv
@@ -13,6 +13,7 @@ Girdi   : veri/Titanic-Dataset.csv
 """
 
 # %% 0. Kütüphaneler ve ayarlar
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as mt
@@ -27,7 +28,11 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Lasso, LassoCV, LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, cross_val_score, train_test_split
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.model_selection import GridSearchCV, KFold, cross_val_score, train_test_split
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.neural_network import MLPRegressor
+from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
@@ -397,16 +402,123 @@ print("Sıfırlanan değişkenler:", list(lasso_katsayi[lasso_katsayi == 0].inde
 # R^2 0.1804). Pclass (-30.0) fiyatı en çok etkileyen değişken olmaya devam ediyor.
 
 
+# %% 2.7 K-EN YAKIN KOMŞU (KNN) REGRESYONU
+# Doğrusal olmayan regresyon modellerine geçelim. Önce varsayılan (k = 5) modeli kuralım.
+knn_model = KNeighborsRegressor().fit(x_train, y_train)
+knn_pred = knn_model.predict(x_test)
+print(f"KNN (k={knn_model.n_neighbors}) test R^2: {r2_score(y_test, knn_pred):.4f}")
+
+# Optimum k değerini GridSearchCV ile belirleyelim.
+k_params = {"n_neighbors": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40]}
+knn_grid = GridSearchCV(KNeighborsRegressor(), k_params, cv=5).fit(x_train, y_train)
+print("KNN için seçilen k:", knn_grid.best_params_)
+
+knn_model = KNeighborsRegressor(n_neighbors=knn_grid.best_params_["n_neighbors"]).fit(x_train, y_train)
+knn_pred = knn_model.predict(x_test)
+knn_rmse = np.sqrt(mean_squared_error(y_test, knn_pred))
+knn_r2 = r2_score(y_test, knn_pred)
+knn_mae = mean_absolute_error(y_test, knn_pred)
+print("--- KNN Final Model Sonuçları ---")
+print(f"KNN RMSE: {knn_rmse:.4f}")
+print(f"KNN R^2 : {knn_r2:.4f}")
+print(f"KNN MAE : {knn_mae:.4f}")
+# Varsayılan k = 5 ile test R^2 yalnızca 0.086 çıkmıştı; GridSearchCV k = 9'u seçti ve R^2 0.154'e
+# yükseldi. KNN, RMSE'de (59.35) doğrusal modellerden biraz kötü, ama MAE'de (19.80) belirgin
+# şekilde daha iyi (doğrusal modellerde ~25). Yani KNN ortadaki yaygın bilet fiyatlarını daha iyi
+# tahmin ediyor, uçtaki pahalı biletlerde ise yine büyük hata yapıyor.
+
+
+# %% 2.8 DESTEK VEKTÖR MAKİNELERİ (SVR) REGRESYONU
+# Doğrusal SVR
+svr_lin = SVR(kernel="linear").fit(x_train, y_train)
+svr_lin_pred = svr_lin.predict(x_test)
+print(f"SVR doğrusal (varsayılan) test R^2: {r2_score(y_test, svr_lin_pred):.4f}")
+
+# Doğrusal olmayan SVR
+svr_rbf = SVR(kernel="rbf").fit(x_train, y_train)
+svr_rbf_pred = svr_rbf.predict(x_test)
+svr_rbf_rmse = np.sqrt(mean_squared_error(y_test, svr_rbf_pred))
+svr_rbf_r2 = r2_score(y_test, svr_rbf_pred)
+svr_rbf_mae = mean_absolute_error(y_test, svr_rbf_pred)
+print("--- SVR (rbf, varsayılan) Sonuçları ---")
+print(f"SVR rbf RMSE: {svr_rbf_rmse:.4f}")
+print(f"SVR rbf R^2 : {svr_rbf_r2:.4f}")
+print(f"SVR rbf MAE : {svr_rbf_mae:.4f}")
+
+# En iyi doğrusal modeli seçmek için C parametresini GridSearchCV ile arayalım.
+params_svr = {"C": np.arange(0.1, 4, 0.1)}
+svr_grid = GridSearchCV(SVR(kernel="linear"), params_svr, cv=5).fit(x_train, y_train)
+best_C = float(svr_grid.best_params_["C"])
+print("SVR (doğrusal) için seçilen C:", round(best_C, 1))
+
+svr_model = SVR(kernel="linear", C=best_C).fit(x_train, y_train)
+svr_pred = svr_model.predict(x_test)
+svr_rmse = np.sqrt(mean_squared_error(y_test, svr_pred))
+svr_r2 = r2_score(y_test, svr_pred)
+svr_mae = mean_absolute_error(y_test, svr_pred)
+print("--- SVR (doğrusal, ayarlı) Sonuçları ---")
+print(f"SVR doğrusal RMSE: {svr_rmse:.4f}")
+print(f"SVR doğrusal R^2 : {svr_r2:.4f}")
+print(f"SVR doğrusal MAE : {svr_mae:.4f}")
+# Varsayılan rbf çekirdekli SVR bu veride çok kötü çıktı (test R^2 = -0.055, yani ortalamayı
+# tahmin etmekten bile kötü). Doğrusal SVR ise C = 3.8 ile R^2 0.145'e ulaştı. Doğrusal SVR'ın MAE'si
+# (17.80) doğrusal regresyon modellerinden (~25) çok daha iyi, RMSE'si (59.67) ise biraz kötü;
+# SVR ortadaki fiyatları daha iyi, uçtaki pahalı biletleri daha kötü tahmin ediyor.
+
+
+# %% 2.9 YAPAY SİNİR AĞLARI (ANN) (MLP)
+# Yapay sinir ağları modellemede standartlaştırılmış girdiler kullanılır.
+scl = StandardScaler()
+scl.fit(x_train)
+x_train_scl = scl.transform(x_train)
+x_test_scl = scl.transform(x_test)
+
+ann_model = MLPRegressor()
+# Grid search için parametre aralıkları
+ann_params = {"alpha": [0.005, 0.01, 0.05, 0.1],
+              "hidden_layer_sizes": [(20, 20), (100, 150, 200),
+                                     (300, 200, 100),
+                                     (8, 8, 8), (8, 8)],
+              "activation": ["relu", "logistic"]}
+# Büyük ağlar bazen belirlenen iterasyonda yakınsamayabilir (ConvergenceWarning),
+# bu uyarıları gizleyip sonuçlara bakalım.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", category=ConvergenceWarning)
+    ann_grid = GridSearchCV(ann_model, ann_params, cv=5).fit(x_train_scl, y_train)
+print("YSA için seçilen parametreler:", ann_grid.best_params_)
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", category=ConvergenceWarning)
+    ann_model = MLPRegressor(**ann_grid.best_params_).fit(x_train_scl, y_train)
+ann_pred = ann_model.predict(x_test_scl)
+ann_rmse = np.sqrt(mean_squared_error(y_test, ann_pred))
+ann_r2 = r2_score(y_test, ann_pred)
+ann_mae = mean_absolute_error(y_test, ann_pred)
+print("--- YSA Final Model Sonuçları ---")
+print(f"YSA RMSE: {ann_rmse:.4f}")
+print(f"YSA R^2 : {ann_r2:.4f}")
+print(f"YSA MAE : {ann_mae:.4f}")
+# Bu çalıştırmada GridSearchCV relu, alpha = 0.05 ve (100, 150, 200) yapısını seçti; test setinde
+# RMSE 56.87, R^2 0.223, MAE 16.73 ile şu ana kadarki en iyi model oldu. Not: YSA başlangıçta
+# rastgele ağırlıklarla başladığı için (random_state verilmedi) kodu her çalıştırdığımızda
+# sonuçlar ve seçilen parametreler biraz değişebilir; bu yüzden YSA sonucunu kesin bir sıralama
+# olarak değil, yaklaşık bir değer olarak yorumlamak gerekir.
+
+
 # %% 3. TEST SETİ SONUÇ ÖZETİ
 ozet = pd.DataFrame(
     {
-        "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse],
-        "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae, ridge_mae, lasso_mae],
-        "R2": [r2_test, pcr_r2, pls_r2, ridge_r2, lasso_r2],
+        "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse, knn_rmse, svr_rmse,
+                 svr_rbf_rmse, ann_rmse],
+        "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae, ridge_mae, lasso_mae,
+                knn_mae, svr_mae, svr_rbf_mae, ann_mae],
+        "R2": [r2_test, pcr_r2, pls_r2, ridge_r2, lasso_r2, knn_r2, svr_r2, svr_rbf_r2, ann_r2],
     },
     index=["OLS", f"PCR ({best_n} bileşen)", f"PLS ({best_pls} bileşen)",
-           f"Ridge (alpha={best_alpha_ridge})", f"Lasso (alpha={lasso_cv.alpha_:.4f})"],
+           f"Ridge (alpha={best_alpha_ridge})", f"Lasso (alpha={lasso_cv.alpha_:.4f})",
+           f"KNN (k={knn_grid.best_params_['n_neighbors']})", f"SVR doğrusal (C={best_C:.1f})",
+           "SVR rbf", "YSA"],
 ).round(4)
 print("\nTest seti karşılaştırması:\n", ozet)
 
-# Devamı (KNN, SVR, yapay sinir ağı ve ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
+# Devamı (ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
