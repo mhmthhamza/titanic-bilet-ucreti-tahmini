@@ -5,7 +5,8 @@ Mehmet Hamza Şükür
 
 Titanic yolcu verisinde bilet ücretini (Fare) tahmin eden regresyon modelleri:
 basit/çoklu OLS, varsayım kontrolleri, VIF, eğitim-test ayrımı, PCR, PLS,
-Ridge, Lasso, KNN, SVR ve yapay sinir ağı.
+Ridge, Lasso, KNN, SVR, yapay sinir ağı, CART, Bagging, Random Forest ve
+Gradient Boosting.
 
 Kullanım: Spyder'da hücre hücre (Shift+Enter) ya da `python titanic_analiz.py`
 Girdi   : veri/Titanic-Dataset.csv
@@ -28,11 +29,13 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 from sklearn.linear_model import Lasso, LassoCV, LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.ensemble import BaggingRegressor, GradientBoostingRegressor, RandomForestRegressor
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.model_selection import GridSearchCV, KFold, cross_val_score, train_test_split
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.preprocessing import StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
@@ -505,20 +508,126 @@ print(f"YSA MAE : {ann_mae:.4f}")
 # olarak değil, yaklaşık bir değer olarak yorumlamak gerekir.
 
 
+# %% 2.10 CART (CLASSIFICATION AND REGRESSION TREES) - KARAR AĞACI
+# Önce varsayılan modeli kuralım.
+cart_model = DecisionTreeRegressor().fit(x_train, y_train)
+pred_cart = cart_model.predict(x_test)
+print(f"CART (varsayılan) test R^2: {r2_score(y_test, pred_cart):.4f}")
+
+# Model Optimizasyonu
+cart_params = {
+    "min_samples_split": range(2, 100),
+    "max_leaf_nodes": range(2, 10)}
+grid_cart_model = GridSearchCV(cart_model, cart_params, cv=10).fit(x_train, y_train)
+print("CART için seçilen parametreler:", grid_cart_model.best_params_)
+
+# Bulunan en iyi parametrelerle modeli yeniden kuralım.
+optim_cart_model = DecisionTreeRegressor(**grid_cart_model.best_params_).fit(x_train, y_train)
+best_pred_cart = optim_cart_model.predict(x_test)
+cart_rmse = np.sqrt(mean_squared_error(y_test, best_pred_cart))
+cart_r2 = r2_score(y_test, best_pred_cart)
+cart_mae = mean_absolute_error(y_test, best_pred_cart)
+print("--- CART Final Model Sonuçları ---")
+print(f"CART RMSE: {cart_rmse:.4f}")
+print(f"CART R^2 : {cart_r2:.4f}")
+print(f"CART MAE : {cart_mae:.4f}")
+# Varsayılan ağaçla test R^2 0.153 idi; GridSearchCV (max_leaf_nodes = 8, min_samples_split = 36)
+# ile 0.184'e yükseldi. Budanmış ağaç RMSE'de (58.28) doğrusal modellerle yaklaşık aynı, MAE'de
+# (19.07) ise onlardan belirgin şekilde daha iyi.
+
+
+# %% 2.11 BOOTSTRAP AGGREGATION (BAGGING)
+bagging_model = BaggingRegressor(bootstrap_features=True).fit(x_train, y_train)
+bag_preds = bagging_model.predict(x_test)
+print(f"Bagging (varsayılan) test R^2: {r2_score(y_test, bag_preds):.4f}")
+
+# Model Optimizasyonu
+bag_params = {"n_estimators": range(2, 40)}
+grid_bag_model = GridSearchCV(bagging_model, bag_params, cv=10).fit(x_train, y_train)
+print("Bagging için seçilen parametreler:", grid_bag_model.best_params_)
+
+best_bag_model = BaggingRegressor(bootstrap_features=True,
+                                  **grid_bag_model.best_params_).fit(x_train, y_train)
+best_bag_preds = best_bag_model.predict(x_test)
+bag_rmse = np.sqrt(mean_squared_error(y_test, best_bag_preds))
+bag_r2 = r2_score(y_test, best_bag_preds)
+bag_mae = mean_absolute_error(y_test, best_bag_preds)
+print("--- Bagging Final Model Sonuçları ---")
+print(f"Bagging RMSE: {bag_rmse:.4f}")
+print(f"Bagging R^2 : {bag_r2:.4f}")
+print(f"Bagging MAE : {bag_mae:.4f}")
+# Varsayılan Bagging ile test R^2 0.149 idi; GridSearchCV ile ağaç sayısı 36 seçilince 0.205'e
+# çıktı (RMSE 57.53, MAE 18.65). Tek bir ağaca (CART) göre daha iyi, çünkü birçok ağacın
+# ortalamasını almak varyansı azaltıyor.
+
+
+# %% 2.12 RANDOM FOREST (RF)
+rf_model = RandomForestRegressor().fit(x_train, y_train)
+pred_rf = rf_model.predict(x_test)
+print(f"Random Forest (varsayılan) test R^2: {r2_score(y_test, pred_rf):.4f}")
+
+# Model Optimizasyonu
+# Veri setimizde 6 değişken olduğu için max_features adayları [2, 3, 5] ile sınırlandı.
+# n_jobs=-1: ızgara çok uzun sürdüğü için işlemcinin tüm çekirdekleri kullanılır (sonucu değiştirmez).
+rf_params = {"max_depth": range(1, 15), "max_features": [2, 3, 5], "n_estimators": [100, 250, 500, 1000]}
+rf_grid_model = GridSearchCV(rf_model, rf_params, cv=10, n_jobs=-1).fit(x_train, y_train)
+print("Random Forest için seçilen parametreler:", rf_grid_model.best_params_)
+
+rf_best_model = RandomForestRegressor(**rf_grid_model.best_params_).fit(x_train, y_train)
+pred_rf_best = rf_best_model.predict(x_test)
+rf_rmse = np.sqrt(mean_squared_error(y_test, pred_rf_best))
+rf_r2 = r2_score(y_test, pred_rf_best)
+rf_mae = mean_absolute_error(y_test, pred_rf_best)
+print("--- Random Forest Final Model Sonuçları ---")
+print(f"Random Forest RMSE: {rf_rmse:.4f}")
+print(f"Random Forest R^2 : {rf_r2:.4f}")
+print(f"Random Forest MAE : {rf_mae:.4f}")
+# GridSearchCV max_depth = 5, max_features = 3, n_estimators = 500 değerlerini seçti. Test setinde
+# RMSE 57.27, R^2 0.212, MAE 17.18 ile Bagging'e göre biraz daha iyi, ağaç tabanlı modeller
+# arasında en iyisi. Varsayılan Random Forest (R^2 0.158) ayarlanınca belirgin şekilde iyileşti.
+
+
+# %% 2.13 GRADIENT BOOSTING
+gb_model = GradientBoostingRegressor().fit(x_train, y_train)
+pred_gb = gb_model.predict(x_test)
+print(f"Gradient Boosting (varsayılan) test R^2: {r2_score(y_test, pred_gb):.4f}")
+
+# Model Optimizasyonu
+gb_params = {"learning_rate": [0.01, 0.1], "max_depth": [3, 5, 10],
+             "n_estimators": [100, 250, 500], "subsample": [1, 0.5]}
+gb_grid = GridSearchCV(gb_model, gb_params, cv=5).fit(x_train, y_train)
+print("Gradient Boosting için seçilen parametreler:", gb_grid.best_params_)
+
+gb_best_model = GradientBoostingRegressor(**gb_grid.best_params_).fit(x_train, y_train)
+preds_gb_best = gb_best_model.predict(x_test)
+gb_rmse = np.sqrt(mean_squared_error(y_test, preds_gb_best))
+gb_r2 = r2_score(y_test, preds_gb_best)
+gb_mae = mean_absolute_error(y_test, preds_gb_best)
+print("--- Gradient Boosting Final Model Sonuçları ---")
+print(f"Gradient Boosting RMSE: {gb_rmse:.4f}")
+print(f"Gradient Boosting R^2 : {gb_r2:.4f}")
+print(f"Gradient Boosting MAE : {gb_mae:.4f}")
+# Varsayılan Gradient Boosting test R^2 = 0.201 ile zaten iyi bir sonuç vermişti. GridSearchCV
+# (learning_rate = 0.01, max_depth = 3, n_estimators = 250, subsample = 0.5) ile ayarlanan model
+# test setinde 0.192 çıktı (RMSE 58.01, MAE 17.95); yani CV'de en iyi görünen ayar testte
+# varsayılandan biraz daha kötü oldu. Veri küçük olduğu için bu fark şansa bağlı olabilir.
+# Not: Bagging, Random Forest ve Gradient Boosting'de rastgelelik var (random_state verilmedi),
+# bu yüzden kodu her çalıştırdığımızda bu sonuçlar biraz değişebilir.
+
+
 # %% 3. TEST SETİ SONUÇ ÖZETİ
 ozet = pd.DataFrame(
     {
         "RMSE": [np.sqrt(mse_test), pcr_rmse, pls_rmse, ridge_rmse, lasso_rmse, knn_rmse, svr_rmse,
-                 svr_rbf_rmse, ann_rmse],
+                 svr_rbf_rmse, ann_rmse, cart_rmse, bag_rmse, rf_rmse, gb_rmse],
         "MAE": [mean_absolute_error(y_test, y_tahmin), pcr_mae, pls_mae, ridge_mae, lasso_mae,
-                knn_mae, svr_mae, svr_rbf_mae, ann_mae],
-        "R2": [r2_test, pcr_r2, pls_r2, ridge_r2, lasso_r2, knn_r2, svr_r2, svr_rbf_r2, ann_r2],
+                knn_mae, svr_mae, svr_rbf_mae, ann_mae, cart_mae, bag_mae, rf_mae, gb_mae],
+        "R2": [r2_test, pcr_r2, pls_r2, ridge_r2, lasso_r2, knn_r2, svr_r2, svr_rbf_r2, ann_r2,
+               cart_r2, bag_r2, rf_r2, gb_r2],
     },
     index=["OLS", f"PCR ({best_n} bileşen)", f"PLS ({best_pls} bileşen)",
            f"Ridge (alpha={best_alpha_ridge})", f"Lasso (alpha={lasso_cv.alpha_:.4f})",
            f"KNN (k={knn_grid.best_params_['n_neighbors']})", f"SVR doğrusal (C={best_C:.1f})",
-           "SVR rbf", "YSA"],
+           "SVR rbf", "YSA", "CART", "Bagging", "Random Forest", "Gradient Boosting"],
 ).round(4)
 print("\nTest seti karşılaştırması:\n", ozet)
-
-# Devamı (ağaç tabanlı modeller) bir sonraki aşamada eklenecek.
