@@ -44,10 +44,10 @@ Titanic yolcu verisinde bilet ücretini (`Fare`) açıklayıcı değişkenlerle 
 ## Bulgular ve sınırlılıklar
 
 - Hiçbir model R² = 0,23'ü geçemedi. Bilet ücretini bu 6 değişkenle tahmin etmek zor; `Fare` aşırı sağa çarpık olduğu için OLS'nin normallik ve sabit varyans varsayımları sağlanmıyor.
-- Ağaç tabanlı modeller ve yapay sinir ağı, ortalama mutlak hatada (MAE) doğrusal modellerden belirgin biçimde iyi (yaklaşık 17-19, doğrusal modellerde yaklaşık 25). RMSE'de fark küçük; uçtaki pahalı biletler hatayı büyütüyor.
+- Ağaç tabanlı modeller ve yapay sinir ağı, ortalama mutlak hatada (MAE) doğrusal modellerden belirgin biçimde iyi (yaklaşık 17-20, doğrusal modellerde yaklaşık 25). Bu, tekrarlanan çalıştırmalarda da değişmeyen, projenin kararlı bulgusudur. RMSE'de fark küçük; uçtaki pahalı biletler hatayı büyütüyor.
 - PCR'da çapraz doğrulama tüm bileşenleri (6/6) seçtiği için PCR sonucu düz OLS ile aynıdır.
 - Lasso hiçbir değişkenin katsayısını sıfırlamadı.
-- Yapay sinir ağı, Bagging, Random Forest ve Gradient Boosting'de `random_state` verilmedi; bu modellerin sonuçları kodu her çalıştırdığımızda biraz değişebilir. Tablodaki değerler tek bir çalıştırmanın sonucudur.
+- Yapay sinir ağı, Bagging, Random Forest ve Gradient Boosting'de `random_state` verilmedi; bu dört modelin sonuçları kodu her çalıştırdığımızda değişir ve aralarındaki sıralama kararlı değildir. Tablodaki değerler tek bir çalıştırmanın sonucudur; başka bir çalıştırmada örneğin YSA R² 0,189, Bagging 0,156, Random Forest 0,202, Gradient Boosting 0,208 çıktı. Bu yüzden bu dört model arasında "en iyi model" seçimi yapılmamıştır. Diğer modellerin (OLS, PCR, PLS, Ridge, Lasso, KNN, SVR, CART) sonuçları her çalıştırmada aynıdır.
 - Eksik yaş değerleri silindi (doldurma yapılmadı), Cabin ve Embarked kullanılmadı.
 
 ## Çalıştırma

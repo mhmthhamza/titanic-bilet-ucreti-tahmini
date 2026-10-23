@@ -501,11 +501,11 @@ print("--- YSA Final Model Sonuçları ---")
 print(f"YSA RMSE: {ann_rmse:.4f}")
 print(f"YSA R^2 : {ann_r2:.4f}")
 print(f"YSA MAE : {ann_mae:.4f}")
-# Bu çalıştırmada GridSearchCV relu, alpha = 0.05 ve (100, 150, 200) yapısını seçti; test setinde
-# RMSE 56.87, R^2 0.223, MAE 16.73 ile şu ana kadarki en iyi model oldu. Not: YSA başlangıçta
-# rastgele ağırlıklarla başladığı için (random_state verilmedi) kodu her çalıştırdığımızda
-# sonuçlar ve seçilen parametreler biraz değişebilir; bu yüzden YSA sonucunu kesin bir sıralama
-# olarak değil, yaklaşık bir değer olarak yorumlamak gerekir.
+# Bir çalıştırmada GridSearchCV relu, alpha = 0.05 ve (100, 150, 200) yapısını seçti; test setinde
+# RMSE 56.87, R^2 0.223, MAE 16.73 elde edildi. Başka bir çalıştırmada ise R^2 0.189'a düştü.
+# YSA başlangıçta rastgele ağırlıklarla başladığı için (random_state verilmedi) kodu her
+# çalıştırdığımızda sonuçlar ve seçilen parametreler değişebiliyor; bu yüzden YSA'yı kesin bir
+# sıralamayla değil, yaklaşık bir aralıkla (R^2 ≈ 0.19-0.23, MAE ≈ 17-18) yorumlamak gerekir.
 
 
 # %% 2.10 CART (CLASSIFICATION AND REGRESSION TREES) - KARAR AĞACI
@@ -556,9 +556,11 @@ print("--- Bagging Final Model Sonuçları ---")
 print(f"Bagging RMSE: {bag_rmse:.4f}")
 print(f"Bagging R^2 : {bag_r2:.4f}")
 print(f"Bagging MAE : {bag_mae:.4f}")
-# Varsayılan Bagging ile test R^2 0.149 idi; GridSearchCV ile ağaç sayısı 36 seçilince 0.205'e
-# çıktı (RMSE 57.53, MAE 18.65). Tek bir ağaca (CART) göre daha iyi, çünkü birçok ağacın
-# ortalamasını almak varyansı azaltıyor.
+# Bir çalıştırmada varsayılan Bagging ile test R^2 0.149 idi; GridSearchCV ile ağaç sayısı 36
+# seçilince 0.205'e çıktı (RMSE 57.53, MAE 18.65). Başka bir çalıştırmada ise R^2 0.156 civarında
+# kaldı. Bagging'de ağaçlar rastgele örneklemlerle kurulduğu için (random_state verilmedi) sonuç
+# çalıştırmadan çalıştırmaya belirgin şekilde değişiyor; bazen tek bir ağaçtan (CART) daha iyi,
+# bazen ona yakın çıkıyor.
 
 
 # %% 2.12 RANDOM FOREST (RF)
@@ -582,9 +584,10 @@ print("--- Random Forest Final Model Sonuçları ---")
 print(f"Random Forest RMSE: {rf_rmse:.4f}")
 print(f"Random Forest R^2 : {rf_r2:.4f}")
 print(f"Random Forest MAE : {rf_mae:.4f}")
-# GridSearchCV max_depth = 5, max_features = 3, n_estimators = 500 değerlerini seçti. Test setinde
-# RMSE 57.27, R^2 0.212, MAE 17.18 ile Bagging'e göre biraz daha iyi, ağaç tabanlı modeller
-# arasında en iyisi. Varsayılan Random Forest (R^2 0.158) ayarlanınca belirgin şekilde iyileşti.
+# Bir çalıştırmada GridSearchCV max_depth = 5, max_features = 3, n_estimators = 500 değerlerini
+# seçti; test setinde RMSE 57.27, R^2 0.212, MAE 17.18 elde edildi (varsayılan Random Forest:
+# R^2 0.158). Başka bir çalıştırmada R^2 0.202, MAE 17.34 çıktı. Random Forest'ın sonuçları
+# rastgelelik nedeniyle biraz değişse de, iki çalıştırmada da en düşük MAE değerleri arasında yer aldı.
 
 
 # %% 2.13 GRADIENT BOOSTING
@@ -607,12 +610,14 @@ print("--- Gradient Boosting Final Model Sonuçları ---")
 print(f"Gradient Boosting RMSE: {gb_rmse:.4f}")
 print(f"Gradient Boosting R^2 : {gb_r2:.4f}")
 print(f"Gradient Boosting MAE : {gb_mae:.4f}")
-# Varsayılan Gradient Boosting test R^2 = 0.201 ile zaten iyi bir sonuç vermişti. GridSearchCV
-# (learning_rate = 0.01, max_depth = 3, n_estimators = 250, subsample = 0.5) ile ayarlanan model
-# test setinde 0.192 çıktı (RMSE 58.01, MAE 17.95); yani CV'de en iyi görünen ayar testte
-# varsayılandan biraz daha kötü oldu. Veri küçük olduğu için bu fark şansa bağlı olabilir.
-# Not: Bagging, Random Forest ve Gradient Boosting'de rastgelelik var (random_state verilmedi),
-# bu yüzden kodu her çalıştırdığımızda bu sonuçlar biraz değişebilir.
+# Bir çalıştırmada varsayılan Gradient Boosting test R^2 = 0.201 ile iyi bir sonuç verdi; GridSearchCV
+# (learning_rate = 0.01, max_depth = 3, n_estimators = 250, subsample = 0.5) ile ayarlanan model ise
+# test setinde 0.192 çıktı (RMSE 58.01, MAE 17.95). Başka bir çalıştırmada ayarlı model R^2 0.208
+# ile tablodaki en yüksek R^2'yi verdi. Veri küçük olduğu için bu farklar şansa bağlı olabilir.
+# Not: YSA, Bagging, Random Forest ve Gradient Boosting'de rastgelelik var (random_state verilmedi);
+# bu dört modelin sonuçları ve aralarındaki sıralama her çalıştırmada değişebiliyor. Kararlı olan
+# bulgu şu: doğrusal olmayan modellerin MAE değeri (≈17-20) doğrusal modellerden (≈25) belirgin
+# şekilde düşük.
 
 
 # %% 3. TEST SETİ SONUÇ ÖZETİ
